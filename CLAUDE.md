@@ -44,6 +44,13 @@ src/
     └── verify.rs
 ```
 
+## When Changing Features
+
+When features are added, edited, or deleted:
+- Update the README.md with any CLI or usage changes
+- Update relevant documentation in docs/
+- Update or add tests to cover the changes
+
 ## Before Committing
 
 Always run fmt and clippy before committing and pushing:
