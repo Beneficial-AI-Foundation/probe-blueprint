@@ -1,0 +1,31 @@
+[package]
+name = "probe-blueprint"
+version = "0.1.0"
+edition = "2021"
+description = "Probe Blueprint projects: generate call graph atoms and analyze verification results for Lean 4"
+license = "MIT"
+repository = "https://github.com/Beneficial-AI-Foundation/probe-blueprint"
+keywords = ["lean", "blueprint", "verification", "call-graph", "code-analysis"]
+categories = ["development-tools", "command-line-utilities"]
+
+[[bin]]
+name = "probe-blueprint"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+regex = "1.10"
+clap = { version = "4.5", features = ["derive"] }
+walkdir = "2.4"
+thiserror = "1.0"
+
+[dev-dependencies]
+tempfile = "3.10"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true
