@@ -6,35 +6,16 @@ use std::path::Path;
 
 use super::stubify;
 
-/// Line range for source locations (input format from stubs.json)
-#[derive(Debug, Deserialize)]
-struct LineRange {
-    #[serde(rename = "lines-start")]
-    lines_start: usize,
-    #[serde(rename = "lines-end")]
-    lines_end: usize,
-}
-
 /// Stub entry from stubs.json
 #[derive(Debug, Deserialize)]
 struct Stub {
-    #[serde(rename = "stub-path")]
-    stub_path: String,
-    #[serde(rename = "stub-spec")]
-    stub_spec: LineRange,
+    label: String,
+    #[serde(rename = "code-name")]
+    code_name: Option<String>,
     #[serde(rename = "spec-dependencies", default)]
     spec_dependencies: Vec<String>,
     #[serde(rename = "proof-dependencies")]
     proof_dependencies: Option<Vec<String>>,
-}
-
-/// Output line range format for atoms.json
-#[derive(Debug, Serialize)]
-struct AtomLineRange {
-    #[serde(rename = "lines-start")]
-    lines_start: usize,
-    #[serde(rename = "lines-end")]
-    lines_end: usize,
 }
 
 /// Atom entry for atoms.json
@@ -43,10 +24,6 @@ struct Atom {
     #[serde(rename = "display-name")]
     display_name: String,
     dependencies: Vec<String>,
-    #[serde(rename = "stub-path")]
-    stub_path: String,
-    #[serde(rename = "stub-text")]
-    stub_text: AtomLineRange,
 }
 
 /// Generate call graph atoms with line numbers
@@ -73,39 +50,49 @@ pub fn run(project_path: &str, output: &str, regenerate_stubs: bool) -> Result<(
     let stubs_content = fs::read_to_string(&stubs_path)?;
     let stubs: HashMap<String, Stub> = serde_json::from_str(&stubs_content)?;
 
-    // Transform stubs into atoms
+    // Build a mapping from stub-name to code-name
+    let stub_name_to_code_name: HashMap<String, String> = stubs
+        .iter()
+        .filter_map(|(stub_name, stub)| {
+            stub.code_name
+                .as_ref()
+                .map(|code_name| (stub_name.clone(), code_name.clone()))
+        })
+        .collect();
+
+    // Transform stubs into atoms (only stubs with code-name)
     let mut atoms: HashMap<String, Atom> = HashMap::new();
 
-    for (stub_name, stub) in stubs {
-        // Extract the label (last part after "/") from the stub name
-        let label = stub_name
-            .split('/')
-            .next_back()
-            .unwrap_or(&stub_name)
-            .to_string();
-
-        // display-name is the label
-        let display_name = label.clone();
-
-        // dependencies is the concatenation of spec-dependencies and proof-dependencies
-        let mut dependencies = stub.spec_dependencies;
-        if let Some(proof_deps) = stub.proof_dependencies {
-            dependencies.extend(proof_deps);
-        }
-
-        // stub-text is from stub-spec
-        let stub_text = AtomLineRange {
-            lines_start: stub.stub_spec.lines_start,
-            lines_end: stub.stub_spec.lines_end,
+    for stub in stubs.values() {
+        // Skip stubs without code-name
+        let code_name = match &stub.code_name {
+            Some(cn) => cn,
+            None => continue,
         };
 
+        // display-name is the label
+        let display_name = stub.label.clone();
+
+        // Map dependencies from stub-names to code-names
+        let mut dependencies = Vec::new();
+        for dep_stub_name in &stub.spec_dependencies {
+            if let Some(dep_code_name) = stub_name_to_code_name.get(dep_stub_name) {
+                dependencies.push(dep_code_name.clone());
+            }
+        }
+        if let Some(proof_deps) = &stub.proof_dependencies {
+            for dep_stub_name in proof_deps {
+                if let Some(dep_code_name) = stub_name_to_code_name.get(dep_stub_name) {
+                    dependencies.push(dep_code_name.clone());
+                }
+            }
+        }
+
         atoms.insert(
-            label,
+            code_name.clone(),
             Atom {
                 display_name,
                 dependencies,
-                stub_path: stub.stub_path,
-                stub_text,
             },
         );
     }
@@ -134,50 +121,54 @@ mod tests {
     fn test_atom_serialization() {
         let atom = Atom {
             display_name: "my_theorem".to_string(),
-            dependencies: vec!["dep1".to_string(), "dep2".to_string()],
-            stub_path: "chapter/theorems.tex".to_string(),
-            stub_text: AtomLineRange {
-                lines_start: 10,
-                lines_end: 20,
-            },
+            dependencies: vec!["probe:Dep1".to_string(), "probe:Dep2".to_string()],
         };
 
         let json = serde_json::to_string(&atom).unwrap();
         assert!(json.contains("\"display-name\":\"my_theorem\""));
-        assert!(json.contains("\"stub-path\":\"chapter/theorems.tex\""));
-        assert!(json.contains("\"stub-text\":{\"lines-start\":10,\"lines-end\":20}"));
+        assert!(json.contains("\"dependencies\":[\"probe:Dep1\",\"probe:Dep2\"]"));
     }
 
     #[test]
     fn test_stub_deserialization() {
         let json = r#"{
-            "stub-path": "chapter/theorems.tex",
-            "stub-spec": { "lines-start": 10, "lines-end": 20 },
-            "labels": ["thm1"],
+            "label": "thm1",
+            "code-name": "probe:MyTheorem",
             "spec-ok": true,
             "mathlib-ok": false,
             "not-ready": false,
-            "spec-dependencies": ["dep1", "dep2"],
-            "proof-dependencies": ["dep3"]
+            "spec-dependencies": ["path/dep1", "path/dep2"],
+            "proof-dependencies": ["path/dep3"]
         }"#;
 
         let stub: Stub = serde_json::from_str(json).unwrap();
-        assert_eq!(stub.stub_path, "chapter/theorems.tex");
-        assert_eq!(stub.stub_spec.lines_start, 10);
-        assert_eq!(stub.stub_spec.lines_end, 20);
-        assert_eq!(stub.spec_dependencies, vec!["dep1", "dep2"]);
-        assert_eq!(stub.proof_dependencies, Some(vec!["dep3".to_string()]));
+        assert_eq!(stub.label, "thm1");
+        assert_eq!(stub.code_name, Some("probe:MyTheorem".to_string()));
+        assert_eq!(stub.spec_dependencies, vec!["path/dep1", "path/dep2"]);
+        assert_eq!(stub.proof_dependencies, Some(vec!["path/dep3".to_string()]));
+    }
+
+    #[test]
+    fn test_stub_deserialization_no_code_name() {
+        let json = r#"{
+            "label": "thm1",
+            "stub-type": "theorem",
+            "stub-path": "chapter/theorems.tex",
+            "spec-dependencies": ["path/child1", "path/child2"]
+        }"#;
+
+        let stub: Stub = serde_json::from_str(json).unwrap();
+        assert_eq!(stub.label, "thm1");
+        assert!(stub.code_name.is_none());
+        assert_eq!(stub.spec_dependencies, vec!["path/child1", "path/child2"]);
     }
 
     #[test]
     fn test_stub_deserialization_no_proof_deps() {
         let json = r#"{
-            "stub-path": "chapter/theorems.tex",
-            "stub-spec": { "lines-start": 10, "lines-end": 20 },
-            "labels": ["thm1"],
+            "label": "thm1",
+            "code-name": "probe:MyTheorem",
             "spec-ok": true,
-            "mathlib-ok": false,
-            "not-ready": false,
             "spec-dependencies": []
         }"#;
 

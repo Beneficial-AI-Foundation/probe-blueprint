@@ -189,39 +189,32 @@ probe-blueprint atomize ./my-lean-project -o atoms.json
 
 1. Checks if `.verilib/stubs.json` exists; if not, runs `stubify` to generate it
 2. If `--regenerate-stubs` is specified, regenerates stubs even if they exist
-3. Transforms each stub into an atom with:
-   - **Key**: Same as the stub name (`path/label`)
-   - **`display-name`**: The last label from the stub
-   - **`dependencies`**: Concatenation of `spec-dependencies` and `proof-dependencies`
-   - **`stub-path`**: Path to the LaTeX source file
-   - **`stub-text`**: Line range from `stub-spec`
+3. Builds a mapping from stub-names to code-names
+4. For each stub that has a `code-name`, creates an atom with:
+   - **Key**: The `code-name` from the stub
+   - **`display-name`**: The `label` from the stub
+   - **`dependencies`**: `spec-dependencies` and `proof-dependencies` mapped to code-names (dependencies without code-names are omitted)
 
 **Output format:**
 
 ```json
 {
-  "387_implies_43": {
+  "probe:Equation387_implies_Equation43": {
     "display-name": "387_implies_43",
-    "dependencies": ["eq387", "eq43", "lemma1"],
-    "stub-path": "chapter/implications.tex",
-    "stub-text": { "lines-start": 10, "lines-end": 15 }
+    "dependencies": ["probe:Equation387", "probe:Equation43", "probe:Lemma1"]
   },
-  "eq1": {
+  "probe:Equation1": {
     "display-name": "eq1",
-    "dependencies": ["magma-def"],
-    "stub-path": "chapter/equations.tex",
-    "stub-text": { "lines-start": 5, "lines-end": 8 }
+    "dependencies": ["probe:MagmaDef"]
   }
 }
 ```
 
 **Field descriptions:**
 
-- **Key**: The label (last part of the stub name after `/`)
+- **Key**: The `code-name` (Lean declaration name with "probe:" prefix)
 - **`display-name`**: The label used for display purposes
-- **`dependencies`**: All dependencies (spec + proof) that this atom relies on
-- **`stub-path`**: Relative path of the .tex file from `blueprint/src`
-- **`stub-text`**: Line range of the specification (`lines-start` and `lines-end`)
+- **`dependencies`**: All dependencies (spec + proof) mapped to their code-names
 
 ---
 
@@ -248,17 +241,18 @@ probe-blueprint specify ./my-lean-project -o specs.json
 
 1. Checks if `.verilib/stubs.json` exists; if not, runs `stubify` to generate it
 2. If `--regenerate-stubs` is specified, regenerates stubs even if they exist
-3. For each stub, extracts:
+3. For each stub that has a `code-name`, extracts:
+   - **Key**: The `code-name` from the stub
    - **`specified`**: `true` if `spec-ok` is `true` in the stub (i.e., `\leanok` was present)
 
 **Output format:**
 
 ```json
 {
-  "387_implies_43": {
+  "probe:Equation387_implies_Equation43": {
     "specified": true
   },
-  "eq1": {
+  "probe:Equation1": {
     "specified": false
   }
 }
@@ -266,7 +260,7 @@ probe-blueprint specify ./my-lean-project -o specs.json
 
 **Field descriptions:**
 
-- **Key**: The label (last part of the stub name after `/`)
+- **Key**: The `code-name` (Lean declaration name with "probe:" prefix)
 - **`specified`**: `true` if the stub has been formalized in Lean (`\leanok` present)
 
 ---

@@ -9,8 +9,10 @@ use super::stubify;
 /// Stub entry from stubs.json (only fields we need)
 #[derive(Debug, Deserialize)]
 struct Stub {
+    #[serde(rename = "code-name")]
+    code_name: Option<String>,
     #[serde(rename = "spec-ok")]
-    spec_ok: bool,
+    spec_ok: Option<bool>,
 }
 
 /// Spec entry for specs.json
@@ -43,21 +45,20 @@ pub fn run(project_path: &str, output: &str, regenerate_stubs: bool) -> Result<(
     let stubs_content = fs::read_to_string(&stubs_path)?;
     let stubs: HashMap<String, Stub> = serde_json::from_str(&stubs_content)?;
 
-    // Transform stubs into specs
+    // Transform stubs into specs (only stubs with code-name)
     let mut specs: HashMap<String, Spec> = HashMap::new();
 
-    for (stub_name, stub) in stubs {
-        // Extract the label (last part after "/") from the stub name
-        let label = stub_name
-            .split('/')
-            .next_back()
-            .unwrap_or(&stub_name)
-            .to_string();
+    for stub in stubs.values() {
+        // Skip stubs without code-name
+        let code_name = match &stub.code_name {
+            Some(cn) => cn,
+            None => continue,
+        };
 
         specs.insert(
-            label,
+            code_name.clone(),
             Spec {
-                specified: stub.spec_ok,
+                specified: stub.spec_ok.unwrap_or(false),
             },
         );
     }
@@ -101,10 +102,8 @@ mod tests {
     #[test]
     fn test_stub_deserialization() {
         let json = r#"{
-            "stub-type": "theorem",
-            "stub-path": "chapter/theorems.tex",
-            "stub-spec": { "lines-start": 10, "lines-end": 20 },
-            "labels": ["thm1"],
+            "label": "thm1",
+            "code-name": "probe:MyTheorem",
             "spec-ok": true,
             "mathlib-ok": false,
             "not-ready": false,
@@ -112,16 +111,15 @@ mod tests {
         }"#;
 
         let stub: Stub = serde_json::from_str(json).unwrap();
-        assert!(stub.spec_ok);
+        assert_eq!(stub.code_name, Some("probe:MyTheorem".to_string()));
+        assert_eq!(stub.spec_ok, Some(true));
     }
 
     #[test]
     fn test_stub_deserialization_spec_not_ok() {
         let json = r#"{
-            "stub-type": "theorem",
-            "stub-path": "chapter/theorems.tex",
-            "stub-spec": { "lines-start": 10, "lines-end": 20 },
-            "labels": ["thm1"],
+            "label": "thm1",
+            "code-name": "probe:MyTheorem",
             "spec-ok": false,
             "mathlib-ok": false,
             "not-ready": false,
@@ -129,6 +127,20 @@ mod tests {
         }"#;
 
         let stub: Stub = serde_json::from_str(json).unwrap();
-        assert!(!stub.spec_ok);
+        assert_eq!(stub.spec_ok, Some(false));
+    }
+
+    #[test]
+    fn test_stub_deserialization_no_code_name() {
+        let json = r#"{
+            "label": "parent_thm",
+            "stub-type": "theorem",
+            "stub-path": "chapter/theorems.tex",
+            "spec-dependencies": ["path/child1", "path/child2"]
+        }"#;
+
+        let stub: Stub = serde_json::from_str(json).unwrap();
+        assert!(stub.code_name.is_none());
+        assert!(stub.spec_ok.is_none());
     }
 }
