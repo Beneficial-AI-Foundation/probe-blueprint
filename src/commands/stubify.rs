@@ -31,6 +31,8 @@ pub struct LineRange {
 
 #[derive(Debug, Serialize)]
 pub struct Stub {
+    #[serde(rename = "stub-type")]
+    pub stub_type: String,
     #[serde(rename = "stub-path")]
     pub stub_path: String,
     #[serde(rename = "stub-spec")]
@@ -279,6 +281,7 @@ fn byte_pos_to_line(content: &str, pos: usize) -> usize {
 
 /// Parsed environment before label validation
 struct ParsedEnv {
+    env_type: String,
     relative_path: String,
     spec_lines: LineRange,
     proof_lines: Option<LineRange>,
@@ -400,6 +403,7 @@ fn parse_tex_file(content: &str, relative_path: &str, env_types: &[String]) -> V
 
     // Collect all environment matches with their positions
     struct EnvMatch {
+        env_type: String,
         start_pos: usize,
         end_pos: usize,
         env_content: String,
@@ -420,6 +424,7 @@ fn parse_tex_file(content: &str, relative_path: &str, env_types: &[String]) -> V
         for caps in env_re.captures_iter(&content) {
             let full_match = caps.get(0).unwrap();
             all_matches.push(EnvMatch {
+                env_type: env_type.clone(),
                 start_pos: full_match.start(),
                 end_pos: full_match.end(),
                 env_content: caps[1].to_string(),
@@ -544,6 +549,7 @@ fn parse_tex_file(content: &str, relative_path: &str, env_types: &[String]) -> V
         };
 
         envs.push(ParsedEnv {
+            env_type: env_match.env_type,
             relative_path: relative_path.to_string(),
             spec_lines,
             proof_lines,
@@ -674,6 +680,7 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
         all_stubs.insert(
             stub_name,
             Stub {
+                stub_type: env.env_type,
                 stub_path: env.relative_path,
                 stub_spec: env.spec_lines,
                 stub_proof: env.proof_lines,
@@ -918,6 +925,7 @@ mod tests {
         let envs = parse_tex_file(content, "chapter/implications.tex", &env_types);
 
         assert_eq!(envs.len(), 1);
+        assert_eq!(envs[0].env_type, "theorem");
         assert_eq!(envs[0].labels, vec!["387_implies_43"]);
         assert_eq!(
             envs[0].code_name,
@@ -930,6 +938,44 @@ mod tests {
         // Line numbers: starts on line 2, ends on line 4
         assert_eq!(envs[0].spec_lines.lines_start, 2);
         assert_eq!(envs[0].spec_lines.lines_end, 4);
+    }
+
+    #[test]
+    fn test_parse_tex_file_different_env_types() {
+        let content = r#"
+\begin{definition}\label{def1}
+  A definition.
+\end{definition}
+
+\begin{lemma}\label{lem1}
+  A lemma.
+\end{lemma}
+
+\begin{theorem}\label{thm1}
+  A theorem.
+\end{theorem}
+
+\begin{dfn}\label{dfn1}
+  A dfn (short form).
+\end{dfn}
+"#;
+        let env_types: Vec<String> = vec![
+            "definition".to_string(),
+            "lemma".to_string(),
+            "theorem".to_string(),
+            "dfn".to_string(),
+        ];
+        let envs = parse_tex_file(content, "file.tex", &env_types);
+
+        assert_eq!(envs.len(), 4);
+        assert_eq!(envs[0].env_type, "definition");
+        assert_eq!(envs[0].labels, vec!["def1"]);
+        assert_eq!(envs[1].env_type, "lemma");
+        assert_eq!(envs[1].labels, vec!["lem1"]);
+        assert_eq!(envs[2].env_type, "theorem");
+        assert_eq!(envs[2].labels, vec!["thm1"]);
+        assert_eq!(envs[3].env_type, "dfn");
+        assert_eq!(envs[3].labels, vec!["dfn1"]);
     }
 
     #[test]

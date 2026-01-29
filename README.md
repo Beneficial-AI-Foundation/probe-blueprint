@@ -69,6 +69,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 ```json
 {
   "chapter/implications.tex/thm_proof_label": {
+    "stub-type": "theorem",
     "stub-path": "chapter/implications.tex",
     "stub-spec": { "lines-start": 10, "lines-end": 15 },
     "stub-proof": { "lines-start": 17, "lines-end": 22 },
@@ -86,6 +87,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
     "proof-lean-names": ["ProofDecl"]
   },
   "chapter/equations.tex/eq1": {
+    "stub-type": "definition",
     "stub-path": "chapter/equations.tex",
     "stub-spec": { "lines-start": 5, "lines-end": 8 },
     "labels": ["eq1"],
@@ -102,6 +104,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 
 *Statement fields:*
 - **Key (stub-name)**: Relative path from `blueprint/src` + `/` + last label
+- **`stub-type`**: The LaTeX environment type (e.g., "theorem", "lemma", "definition", "dfn")
 - **`stub-path`**: Relative path of the .tex file from `blueprint/src`
 - **`stub-spec`**: Line range of the statement environment (`lines-start` and `lines-end`)
 - **`labels`**: All labels found in the environment and its proof (in order of appearance)
