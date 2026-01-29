@@ -15,13 +15,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Convert .md files with YAML frontmatter to JSON
+    /// Extract Blueprint stubs from LaTeX files in blueprint/src
     Stubify {
-        /// Path to the directory containing .md files
-        path: String,
+        /// Path to the project root (must contain blueprint/src)
+        project_path: String,
 
         /// Output file path
-        #[arg(short, long, default_value = "stubs.json")]
+        #[arg(short, long, default_value = ".verilib/stubs.json")]
         output: String,
     },
 
@@ -68,7 +68,10 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Stubify { path, output } => commands::stubify::run(&path, &output),
+        Commands::Stubify {
+            project_path,
+            output,
+        } => commands::stubify::run(&project_path, &output),
         Commands::Atomize {
             project_path,
             output,

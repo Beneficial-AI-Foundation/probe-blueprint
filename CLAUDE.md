@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 probe-blueprint is a Rust CLI tool that generates call graph data and analyzes Blueprint verification results for Lean 4 projects. It has four subcommands:
-- **stubify**: Convert .md files with YAML frontmatter to JSON
+- **stubify**: Extract mathematical stubs from Blueprint LaTeX files (theorem, lemma, definition, etc.)
 - **atomize**: Generate call graph atoms with accurate line numbers
 - **specify**: Extract function specifications from atoms.json
 - **verify**: Run Blueprint verification and analyze results
