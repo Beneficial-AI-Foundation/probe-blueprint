@@ -27,12 +27,16 @@ enum Commands {
 
     /// Generate call graph atoms with line numbers
     Atomize {
-        /// Path to the project
+        /// Path to the project root (must contain blueprint/src)
         project_path: String,
 
         /// Output file path
-        #[arg(short, long, default_value = "atoms.json")]
+        #[arg(short, long, default_value = ".verilib/atoms.json")]
         output: String,
+
+        /// Regenerate stubs.json even if it exists
+        #[arg(long)]
+        regenerate_stubs: bool,
     },
 
     /// Extract function specifications
@@ -75,7 +79,8 @@ fn main() {
         Commands::Atomize {
             project_path,
             output,
-        } => commands::atomize::run(&project_path, &output),
+            regenerate_stubs,
+        } => commands::atomize::run(&project_path, &output, regenerate_stubs),
         Commands::Specify {
             path,
             output,

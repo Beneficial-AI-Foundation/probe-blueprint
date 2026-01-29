@@ -138,16 +138,62 @@ Fields are omitted if not found. If the config file already exists, new values a
 
 ---
 
-### `atomize` - Generate Call Graph Data
+### `atomize` - Generate Call Graph Atoms
 
-Generate call graph atoms with line numbers.
+Transform stubs into call graph atoms with dependency information. This command reads `stubs.json` and generates an `atoms.json` file compatible with probe-verus tooling.
 
 ```bash
 probe-blueprint atomize <PROJECT_PATH> [OPTIONS]
 
 Options:
-  -o, --output <FILE>     Output file path (default: atoms.json)
+  -o, --output <FILE>     Output file path (default: .verilib/atoms.json)
+      --regenerate-stubs  Regenerate stubs.json even if it exists
 ```
+
+**Examples:**
+```bash
+probe-blueprint atomize ./my-lean-project
+probe-blueprint atomize ./my-lean-project --regenerate-stubs
+probe-blueprint atomize ./my-lean-project -o atoms.json
+```
+
+**How it works:**
+
+1. Checks if `.verilib/stubs.json` exists; if not, runs `stubify` to generate it
+2. If `--regenerate-stubs` is specified, regenerates stubs even if they exist
+3. Transforms each stub into an atom with:
+   - **Key**: Same as the stub name (`path/label`)
+   - **`display-name`**: The last label from the stub
+   - **`dependencies`**: Concatenation of `spec-dependencies` and `proof-dependencies`
+   - **`stub-path`**: Path to the LaTeX source file
+   - **`stub-text`**: Line range from `stub-spec`
+
+**Output format:**
+
+```json
+{
+  "chapter/implications.tex/387_implies_43": {
+    "display-name": "387_implies_43",
+    "dependencies": ["eq387", "eq43", "lemma1"],
+    "stub-path": "chapter/implications.tex",
+    "stub-text": { "lines-start": 10, "lines-end": 15 }
+  },
+  "chapter/equations.tex/eq1": {
+    "display-name": "eq1",
+    "dependencies": ["magma-def"],
+    "stub-path": "chapter/equations.tex",
+    "stub-text": { "lines-start": 5, "lines-end": 8 }
+  }
+}
+```
+
+**Field descriptions:**
+
+- **Key**: Relative path from `blueprint/src` + `/` + last label (same as stub name)
+- **`display-name`**: The label used for display purposes
+- **`dependencies`**: All dependencies (spec + proof) that this atom relies on
+- **`stub-path`**: Relative path of the .tex file from `blueprint/src`
+- **`stub-text`**: Line range of the specification (`lines-start` and `lines-end`)
 
 ---
 
