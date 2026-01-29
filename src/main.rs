@@ -51,18 +51,26 @@ enum Commands {
         /// Regenerate stubs.json even if it exists
         #[arg(long)]
         regenerate_stubs: bool,
+
+        /// Enrich results with atoms.json (reserved for future use)
+        #[arg(short = 'a', long = "with-atoms")]
+        with_atoms: Option<Option<String>>,
     },
 
-    /// Run Blueprint verification and analyze results
+    /// Extract proof verification status
     Verify {
-        /// Path to the project
-        project_path: Option<String>,
+        /// Path to the project root (must contain blueprint/src)
+        project_path: String,
 
         /// Output file path
-        #[arg(short, long, default_value = "proofs.json")]
+        #[arg(short, long, default_value = ".verilib/proofs.json")]
         output: String,
 
-        /// Enrich results with code-names from atoms.json
+        /// Regenerate stubs.json even if it exists
+        #[arg(long)]
+        regenerate_stubs: bool,
+
+        /// Enrich results with atoms.json (reserved for future use)
         #[arg(short = 'a', long = "with-atoms")]
         with_atoms: Option<Option<String>>,
     },
@@ -85,12 +93,14 @@ fn main() {
             project_path,
             output,
             regenerate_stubs,
-        } => commands::specify::run(&project_path, &output, regenerate_stubs),
+            with_atoms,
+        } => commands::specify::run(&project_path, &output, regenerate_stubs, with_atoms),
         Commands::Verify {
             project_path,
             output,
+            regenerate_stubs,
             with_atoms,
-        } => commands::verify::run(project_path.as_deref(), &output, with_atoms),
+        } => commands::verify::run(&project_path, &output, regenerate_stubs, with_atoms),
     };
 
     if let Err(e) = result {

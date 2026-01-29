@@ -265,17 +265,54 @@ probe-blueprint specify ./my-lean-project -o specs.json
 
 ---
 
-### `verify` - Run Blueprint Verification
+### `verify` - Extract Proof Verification Status
 
-Run Blueprint verification on a project and analyze results.
+Extract proof verification status from stubs. This command reads `stubs.json` and generates a `proofs.json` file indicating which stubs have verified proofs.
 
 ```bash
-probe-blueprint verify [PROJECT_PATH] [OPTIONS]
+probe-blueprint verify <PROJECT_PATH> [OPTIONS]
 
 Options:
-  -o, --output <FILE>            Write JSON results to file (default: proofs.json)
-  -a, --with-atoms [FILE]        Enrich results with code-names from atoms.json
+  -o, --output <FILE>     Output file path (default: .verilib/proofs.json)
+      --regenerate-stubs  Regenerate stubs.json even if it exists
 ```
+
+**Examples:**
+```bash
+probe-blueprint verify ./my-lean-project
+probe-blueprint verify ./my-lean-project --regenerate-stubs
+probe-blueprint verify ./my-lean-project -o proofs.json
+```
+
+**How it works:**
+
+1. Checks if `.verilib/stubs.json` exists; if not, runs `stubify` to generate it
+2. If `--regenerate-stubs` is specified, regenerates stubs even if they exist
+3. For each stub that has a `code-name`, extracts:
+   - **Key**: The `code-name` from the stub
+   - **`verified`**: `true` if `proof-ok` is `true` in the stub (i.e., `\leanok` was present in the proof)
+   - **`status`**: `"success"` if verified, `"sorries"` otherwise
+
+**Output format:**
+
+```json
+{
+  "probe:Equation387_implies_Equation43": {
+    "verified": true,
+    "status": "success"
+  },
+  "probe:Equation1": {
+    "verified": false,
+    "status": "sorries"
+  }
+}
+```
+
+**Field descriptions:**
+
+- **Key**: The `code-name` (Lean declaration name with "probe:" prefix)
+- **`verified`**: `true` if the proof has been verified in Lean (`\leanok` present in proof)
+- **`status`**: `"success"` if proof is complete, `"sorries"` if proof contains sorry or is incomplete
 
 ---
 

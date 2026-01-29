@@ -22,7 +22,12 @@ struct Spec {
 }
 
 /// Extract function specifications
-pub fn run(project_path: &str, output: &str, regenerate_stubs: bool) -> Result<(), Box<dyn Error>> {
+pub fn run(
+    project_path: &str,
+    output: &str,
+    regenerate_stubs: bool,
+    _with_atoms: Option<Option<String>>,
+) -> Result<(), Box<dyn Error>> {
     let project_path = Path::new(project_path);
     let verilib_dir = project_path.join(".verilib");
     let stubs_path = verilib_dir.join("stubs.json");
