@@ -29,11 +29,6 @@ pub struct LineRange {
     pub lines_end: usize,
 }
 
-/// Helper function for serde to skip labels if it only contains one element
-fn labels_has_single_element(labels: &[String]) -> bool {
-    labels.len() <= 1
-}
-
 /// Helper function for serde to skip empty Vec
 fn vec_is_empty(v: &[String]) -> bool {
     v.is_empty()
@@ -50,8 +45,6 @@ pub struct Stub {
     pub stub_spec: Option<LineRange>,
     #[serde(rename = "stub-proof", skip_serializing_if = "Option::is_none")]
     pub stub_proof: Option<LineRange>,
-    #[serde(skip_serializing_if = "labels_has_single_element")]
-    pub labels: Vec<String>,
     #[serde(rename = "code-name", skip_serializing_if = "Option::is_none")]
     pub code_name: Option<String>,
     #[serde(rename = "code-names", skip_serializing_if = "Option::is_none")]
@@ -665,6 +658,8 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
     let mut seen_labels: HashSet<String> = HashSet::new();
     let mut label_counter: u64 = 0;
     let mut all_stubs: HashMap<String, Stub> = HashMap::new();
+    // Build a map from label to stub name for quick lookup
+    let mut label_to_stub_name: HashMap<String, String> = HashMap::new();
 
     // Process each environment
     for mut env in all_envs {
@@ -693,18 +688,22 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
         }
 
         // Use the last label for stub-name
-        let primary_label = env.labels.last().unwrap();
+        let primary_label = env.labels.iter().next_back().unwrap().clone();
         let stub_name = format!("{}/{}", env.relative_path, primary_label);
+
+        // Map all labels (including non-canonical ones) to this stub name
+        for label in &env.labels {
+            label_to_stub_name.insert(label.clone(), stub_name.clone());
+        }
 
         all_stubs.insert(
             stub_name,
             Stub {
-                label: primary_label.clone(),
+                label: primary_label,
                 stub_type: Some(env.env_type),
                 stub_path: Some(env.relative_path),
                 stub_spec: Some(env.spec_lines),
                 stub_proof: env.proof_lines,
-                labels: env.labels,
                 code_name: env.code_name,
                 lean_names: env.lean_names,
                 spec_ok: Some(env.spec_ok),
@@ -723,14 +722,6 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
     }
 
     eprintln!("Found {} stubs", all_stubs.len());
-
-    // Build a map from label to stub name for quick lookup
-    let mut label_to_stub_name: HashMap<String, String> = HashMap::new();
-    for (stub_name, stub) in &all_stubs {
-        for label in &stub.labels {
-            label_to_stub_name.insert(label.clone(), stub_name.clone());
-        }
-    }
 
     // Merge standalone proofs (those with \proves) into their corresponding stubs
     for (relative_path, proof) in all_standalone_proofs {
@@ -838,7 +829,6 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
                 stub_path: None,
                 stub_spec: None,
                 stub_proof: None,
-                labels: vec![child_label.clone()],
                 code_name: Some(code_name.clone()),
                 lean_names: None,
                 spec_ok: stub.spec_ok,
@@ -1716,7 +1706,6 @@ Line 3 content.
                     stub_path: Some(env.relative_path.clone()),
                     stub_spec: Some(env.spec_lines),
                     stub_proof: None,
-                    labels: env.labels.clone(),
                     code_name: env.code_name.clone(),
                     lean_names: env.lean_names.clone(),
                     spec_ok: Some(env.spec_ok),
@@ -1765,7 +1754,6 @@ Line 3 content.
                     stub_path: None,
                     stub_spec: None,
                     stub_proof: None,
-                    labels: vec![child_label.clone()],
                     code_name: Some(code_name.clone()),
                     lean_names: None,
                     spec_ok: stub.spec_ok,

@@ -44,7 +44,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 1. Reads `blueprint/src/web.tex` to find the `thms` option (defaults to: definition, lemma, proposition, theorem, corollary)
 2. Scans all `.tex` files in `blueprint/src/` for those environments
 3. For each environment, extracts:
-   - All `\label{...}` → `labels` list (uses the last one for stub-name)
+   - `\label{...}` → uses the last label as the canonical `label` for stub-name
    - `\lean{a,b,c}` → `code-name` (first), `code-names` (full list if multiple)
    - `\leanok` → `spec-ok: true`
    - `\mathlibok` → `mathlib-ok: true`
@@ -52,7 +52,6 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
    - `\discussion{123}` → `discussion: ["123"]` (can appear multiple times)
    - `\uses{r,s,t}` → `spec-dependencies: ["r","s","t"]`
 4. If a `\begin{proof}...\end{proof}` immediately follows, also extracts:
-   - `\label{...}` → appended to `labels` list
    - `\leanok` → `proof-ok: true`
    - `\mathlibok` → `proof-mathlib-ok: true`
    - `\notready` → `proof-not-ready: true`
@@ -62,7 +61,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 5. If a proof contains `\proves{label}`, it is merged into the corresponding stub (for proofs not immediately following their statement)
 6. If an environment has no label, generates one in the form `a0000000000`
 7. Errors if duplicate labels are found
-8. Validates all labels in `spec-dependencies` and `proof-dependencies` exist, resolving them to canonical stub-names (labels may be non-canonical; they are resolved using the labels field of each stub)
+8. Validates all labels in `spec-dependencies` and `proof-dependencies` exist, resolving them to canonical stub-names (non-canonical labels are mapped to their stub-names internally)
 9. If `code-names` has multiple entries, splits the stub into child stubs (one per code-name):
    - Creates child stubs with labels `XXX_1`, `XXX_2`, etc. where `XXX` is the parent label
    - Each child gets one `code-name` and inherits verification fields (`spec-ok`, etc.)
@@ -79,7 +78,6 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
     "stub-path": "chapter/implications.tex",
     "stub-spec": { "lines-start": 10, "lines-end": 15 },
     "stub-proof": { "lines-start": 17, "lines-end": 22 },
-    "labels": ["thm_label", "multi_thm"],
     "spec-dependencies": ["chapter/implications.tex/multi_thm_1", "chapter/implications.tex/multi_thm_2"]
   },
   "chapter/implications.tex/multi_thm_1": {
@@ -126,7 +124,6 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 - **`stub-type`**: The LaTeX environment type (e.g., "theorem", "lemma", "definition", "dfn")
 - **`stub-path`**: Relative path of the .tex file from `blueprint/src`
 - **`stub-spec`**: Line range of the statement environment (`lines-start` and `lines-end`)
-- **`labels`**: All labels found in the environment and its proof (omitted if only one label exists)
 - **`code-name`**: First Lean declaration name from `\lean{...}` with "probe:" prefix (null if not specified). If multiple code-names exist, this field appears only on child stubs (see splitting behavior below)
 - **`spec-ok`**: `true` if `\leanok` is present in the statement
 - **`mathlib-ok`**: `true` if `\mathlibok` is present in the statement
@@ -145,7 +142,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 
 *Stub splitting (when `\lean{A, B, C}` has multiple entries):*
 - **Parent stub** (e.g., `path/XXX`):
-  - Keeps: `stub-type`, `stub-path`, `stub-spec`, `stub-proof`, `labels`
+  - Keeps: `stub-type`, `stub-path`, `stub-spec`, `stub-proof`
   - Sets `spec-dependencies` to list of child stub-names
   - Loses: `code-name`, `spec-ok`, `mathlib-ok`, `not-ready`, `discussion`, all `proof-*` fields
 - **Child stubs** (e.g., `path/XXX_1`, `path/XXX_2`, `path/XXX_3`):
