@@ -202,15 +202,47 @@ probe-blueprint atomize ./my-lean-project -o atoms.json
 
 ### `specify` - Extract Function Specifications
 
-Extract function specifications from source files.
+Extract specification status from stubs. This command reads `stubs.json` and generates a `specs.json` file indicating which stubs have been formalized.
 
 ```bash
-probe-blueprint specify <PATH> [OPTIONS]
+probe-blueprint specify <PROJECT_PATH> [OPTIONS]
 
 Options:
-  -o, --output <FILE>        Output file path (default: specs.json)
-  -a, --with-atoms <FILE>    Path to atoms.json for code-name lookup
+  -o, --output <FILE>     Output file path (default: .verilib/specs.json)
+      --regenerate-stubs  Regenerate stubs.json even if it exists
 ```
+
+**Examples:**
+```bash
+probe-blueprint specify ./my-lean-project
+probe-blueprint specify ./my-lean-project --regenerate-stubs
+probe-blueprint specify ./my-lean-project -o specs.json
+```
+
+**How it works:**
+
+1. Checks if `.verilib/stubs.json` exists; if not, runs `stubify` to generate it
+2. If `--regenerate-stubs` is specified, regenerates stubs even if they exist
+3. For each stub, extracts:
+   - **`specified`**: `true` if `spec-ok` is `true` in the stub (i.e., `\leanok` was present)
+
+**Output format:**
+
+```json
+{
+  "chapter/implications.tex/387_implies_43": {
+    "specified": true
+  },
+  "chapter/equations.tex/eq1": {
+    "specified": false
+  }
+}
+```
+
+**Field descriptions:**
+
+- **Key**: Same as the stub name (relative path + `/` + label)
+- **`specified`**: `true` if the stub has been formalized in Lean (`\leanok` present)
 
 ---
 

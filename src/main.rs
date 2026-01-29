@@ -41,16 +41,16 @@ enum Commands {
 
     /// Extract function specifications
     Specify {
-        /// Path to the project
-        path: String,
+        /// Path to the project root (must contain blueprint/src)
+        project_path: String,
 
         /// Output file path
-        #[arg(short, long, default_value = "specs.json")]
+        #[arg(short, long, default_value = ".verilib/specs.json")]
         output: String,
 
-        /// Path to atoms.json for code-name lookup
-        #[arg(short = 'a', long = "with-atoms")]
-        with_atoms: Option<String>,
+        /// Regenerate stubs.json even if it exists
+        #[arg(long)]
+        regenerate_stubs: bool,
     },
 
     /// Run Blueprint verification and analyze results
@@ -82,10 +82,10 @@ fn main() {
             regenerate_stubs,
         } => commands::atomize::run(&project_path, &output, regenerate_stubs),
         Commands::Specify {
-            path,
+            project_path,
             output,
-            with_atoms,
-        } => commands::specify::run(&path, &output, with_atoms.as_deref()),
+            regenerate_stubs,
+        } => commands::specify::run(&project_path, &output, regenerate_stubs),
         Commands::Verify {
             project_path,
             output,
