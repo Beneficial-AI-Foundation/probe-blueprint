@@ -47,8 +47,15 @@ pub fn run(project_path: &str, output: &str, regenerate_stubs: bool) -> Result<(
     let mut specs: HashMap<String, Spec> = HashMap::new();
 
     for (stub_name, stub) in stubs {
+        // Extract the label (last part after "/") from the stub name
+        let label = stub_name
+            .split('/')
+            .next_back()
+            .unwrap_or(&stub_name)
+            .to_string();
+
         specs.insert(
-            stub_name,
+            label,
             Spec {
                 specified: stub.spec_ok,
             },

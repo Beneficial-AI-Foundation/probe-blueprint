@@ -175,13 +175,13 @@ probe-blueprint atomize ./my-lean-project -o atoms.json
 
 ```json
 {
-  "chapter/implications.tex/387_implies_43": {
+  "387_implies_43": {
     "display-name": "387_implies_43",
     "dependencies": ["eq387", "eq43", "lemma1"],
     "stub-path": "chapter/implications.tex",
     "stub-text": { "lines-start": 10, "lines-end": 15 }
   },
-  "chapter/equations.tex/eq1": {
+  "eq1": {
     "display-name": "eq1",
     "dependencies": ["magma-def"],
     "stub-path": "chapter/equations.tex",
@@ -192,7 +192,7 @@ probe-blueprint atomize ./my-lean-project -o atoms.json
 
 **Field descriptions:**
 
-- **Key**: Relative path from `blueprint/src` + `/` + last label (same as stub name)
+- **Key**: The label (last part of the stub name after `/`)
 - **`display-name`**: The label used for display purposes
 - **`dependencies`**: All dependencies (spec + proof) that this atom relies on
 - **`stub-path`**: Relative path of the .tex file from `blueprint/src`
@@ -230,10 +230,10 @@ probe-blueprint specify ./my-lean-project -o specs.json
 
 ```json
 {
-  "chapter/implications.tex/387_implies_43": {
+  "387_implies_43": {
     "specified": true
   },
-  "chapter/equations.tex/eq1": {
+  "eq1": {
     "specified": false
   }
 }
@@ -241,7 +241,7 @@ probe-blueprint specify ./my-lean-project -o specs.json
 
 **Field descriptions:**
 
-- **Key**: Same as the stub name (relative path + `/` + label)
+- **Key**: The label (last part of the stub name after `/`)
 - **`specified`**: `true` if the stub has been formalized in Lean (`\leanok` present)
 
 ---

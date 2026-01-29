@@ -22,7 +22,6 @@ struct Stub {
     stub_path: String,
     #[serde(rename = "stub-spec")]
     stub_spec: LineRange,
-    labels: Vec<String>,
     #[serde(rename = "spec-dependencies", default)]
     spec_dependencies: Vec<String>,
     #[serde(rename = "proof-dependencies")]
@@ -78,12 +77,15 @@ pub fn run(project_path: &str, output: &str, regenerate_stubs: bool) -> Result<(
     let mut atoms: HashMap<String, Atom> = HashMap::new();
 
     for (stub_name, stub) in stubs {
-        // display-name is the last label (which is also the last part of the stub name)
-        let display_name = stub
-            .labels
-            .last()
-            .cloned()
-            .unwrap_or_else(|| stub_name.split('/').next_back().unwrap_or("").to_string());
+        // Extract the label (last part after "/") from the stub name
+        let label = stub_name
+            .split('/')
+            .next_back()
+            .unwrap_or(&stub_name)
+            .to_string();
+
+        // display-name is the label
+        let display_name = label.clone();
 
         // dependencies is the concatenation of spec-dependencies and proof-dependencies
         let mut dependencies = stub.spec_dependencies;
@@ -98,7 +100,7 @@ pub fn run(project_path: &str, output: &str, regenerate_stubs: bool) -> Result<(
         };
 
         atoms.insert(
-            stub_name,
+            label,
             Atom {
                 display_name,
                 dependencies,
@@ -163,7 +165,6 @@ mod tests {
         assert_eq!(stub.stub_path, "chapter/theorems.tex");
         assert_eq!(stub.stub_spec.lines_start, 10);
         assert_eq!(stub.stub_spec.lines_end, 20);
-        assert_eq!(stub.labels, vec!["thm1"]);
         assert_eq!(stub.spec_dependencies, vec!["dep1", "dep2"]);
         assert_eq!(stub.proof_dependencies, Some(vec!["dep3".to_string()]));
     }
