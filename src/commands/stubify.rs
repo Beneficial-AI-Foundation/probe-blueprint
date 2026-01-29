@@ -449,7 +449,9 @@ fn parse_tex_file(content: &str, relative_path: &str, env_types: &[String]) -> V
 
         // Extract \lean{...} - returns list of declarations
         let lean_names_list = extract_lean(env_content);
-        let code_name = lean_names_list.first().cloned();
+        let code_name = lean_names_list
+            .first()
+            .map(|name| format!("probe:{}", name));
         let lean_names = if lean_names_list.len() > 1 {
             Some(lean_names_list)
         } else {
@@ -964,7 +966,7 @@ mod tests {
         assert_eq!(envs[0].labels, vec!["387_implies_43"]);
         assert_eq!(
             envs[0].code_name,
-            Some("Subgraph.Equation387_implies_Equation43".to_string())
+            Some("probe:Subgraph.Equation387_implies_Equation43".to_string())
         );
         assert!(envs[0].spec_ok);
         assert_eq!(envs[0].spec_dependencies, vec!["eq387", "eq43"]);
@@ -1383,7 +1385,7 @@ Line 3 content.
         let envs = parse_tex_file(content, "file.tex", &env_types);
 
         assert_eq!(envs.len(), 1);
-        assert_eq!(envs[0].code_name, Some("Thm1".to_string()));
+        assert_eq!(envs[0].code_name, Some("probe:Thm1".to_string()));
         assert_eq!(
             envs[0].lean_names,
             Some(vec![
@@ -1493,7 +1495,7 @@ Line 3 content.
         assert!(envs[0].spec_ok);
         assert!(envs[0].mathlib_ok);
         assert_eq!(envs[0].discussion, vec!["100"]);
-        assert_eq!(envs[0].code_name, Some("MyTheorem".to_string()));
+        assert_eq!(envs[0].code_name, Some("probe:MyTheorem".to_string()));
 
         // Proof fields
         assert_eq!(envs[0].proof_ok, Some(true));
