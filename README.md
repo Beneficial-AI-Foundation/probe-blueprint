@@ -63,30 +63,46 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 6. If an environment has no label, generates one in the form `a0000000000`
 7. Errors if duplicate labels are found
 8. Validates all labels in `spec-dependencies` and `proof-dependencies` exist, resolving them to canonical stub-names (labels may be non-canonical; they are resolved using the labels field of each stub)
-9. Extracts project config macros (`\home`, `\github`, `\dochome`) and writes them to `.verilib/config.json`
+9. If `code-names` has multiple entries, splits the stub into child stubs (one per code-name):
+   - Creates child stubs with labels `XXX_1`, `XXX_2`, etc. where `XXX` is the parent label
+   - Each child gets one `code-name` and inherits verification fields (`spec-ok`, etc.)
+   - Parent stub keeps `stub-*` fields but loses verification fields, with `spec-dependencies` pointing to children
+10. Extracts project config macros (`\home`, `\github`, `\dochome`) and writes them to `.verilib/config.json`
 
 **Output format:**
 
 ```json
 {
-  "chapter/implications.tex/thm_proof_label": {
-    "label": "thm_proof_label",
+  "chapter/implications.tex/multi_thm": {
+    "label": "multi_thm",
     "stub-type": "theorem",
     "stub-path": "chapter/implications.tex",
     "stub-spec": { "lines-start": 10, "lines-end": 15 },
     "stub-proof": { "lines-start": 17, "lines-end": 22 },
-    "labels": ["thm_label", "thm_proof_label"],
+    "labels": ["thm_label", "multi_thm"],
+    "spec-dependencies": ["chapter/implications.tex/multi_thm_1", "chapter/implications.tex/multi_thm_2"]
+  },
+  "chapter/implications.tex/multi_thm_1": {
+    "label": "multi_thm_1",
     "code-name": "probe:Subgraph.Equation387_implies_Equation43",
-    "code-names": ["probe:Subgraph.Equation387_implies_Equation43", "probe:Subgraph.Equation387_implies_Equation43'"],
     "spec-ok": true,
     "mathlib-ok": false,
     "not-ready": false,
     "discussion": ["123"],
-    "spec-dependencies": ["chapter/equations.tex/eq387", "chapter/equations.tex/eq43"],
     "proof-ok": true,
     "proof-mathlib-ok": true,
-    "proof-dependencies": ["chapter/lemmas.tex/lemma1", "chapter/lemmas.tex/lemma2"],
-    "proof-code-names": ["ProofDecl"]
+    "proof-dependencies": ["chapter/lemmas.tex/lemma1"]
+  },
+  "chapter/implications.tex/multi_thm_2": {
+    "label": "multi_thm_2",
+    "code-name": "probe:Subgraph.Equation387_implies_Equation43'",
+    "spec-ok": true,
+    "mathlib-ok": false,
+    "not-ready": false,
+    "discussion": ["123"],
+    "proof-ok": true,
+    "proof-mathlib-ok": true,
+    "proof-dependencies": ["chapter/lemmas.tex/lemma1"]
   },
   "chapter/equations.tex/eq1": {
     "label": "eq1",
@@ -111,8 +127,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 - **`stub-path`**: Relative path of the .tex file from `blueprint/src`
 - **`stub-spec`**: Line range of the statement environment (`lines-start` and `lines-end`)
 - **`labels`**: All labels found in the environment and its proof (omitted if only one label exists)
-- **`code-name`**: First Lean declaration name from `\lean{...}` with "probe:" prefix (null if not specified)
-- **`code-names`**: Full list of Lean declarations with "probe:" prefix if multiple specified (omitted if single or none)
+- **`code-name`**: First Lean declaration name from `\lean{...}` with "probe:" prefix (null if not specified). If multiple code-names exist, this field appears only on child stubs (see splitting behavior below)
 - **`spec-ok`**: `true` if `\leanok` is present in the statement
 - **`mathlib-ok`**: `true` if `\mathlibok` is present in the statement
 - **`not-ready`**: `true` if `\notready` is present in the statement
@@ -127,6 +142,16 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 - **`proof-discussion`**: List of issue numbers from `\discussion{...}` in the proof
 - **`proof-dependencies`**: List of stub-names from `\uses{...}` in the proof (labels are expanded to full stub-names)
 - **`proof-code-names`**: List of Lean declarations from `\lean{...}` in the proof
+
+*Stub splitting (when `\lean{A, B, C}` has multiple entries):*
+- **Parent stub** (e.g., `path/XXX`):
+  - Keeps: `stub-type`, `stub-path`, `stub-spec`, `stub-proof`, `labels`
+  - Sets `spec-dependencies` to list of child stub-names
+  - Loses: `code-name`, `spec-ok`, `mathlib-ok`, `not-ready`, `discussion`, all `proof-*` fields
+- **Child stubs** (e.g., `path/XXX_1`, `path/XXX_2`, `path/XXX_3`):
+  - Gets one `code-name` from the original list
+  - Inherits: `spec-ok`, `mathlib-ok`, `not-ready`, `discussion`, all `proof-*` fields from parent
+  - No `stub-*` fields (source location is on parent)
 
 **Config output (`.verilib/config.json`):**
 

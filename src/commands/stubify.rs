@@ -21,7 +21,7 @@ pub struct Config {
 const DEFAULT_ENVS: &[&str] = &["definition", "lemma", "proposition", "theorem", "corollary"];
 
 /// Line range for source locations
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Copy)]
 pub struct LineRange {
     #[serde(rename = "lines-start")]
     pub lines_start: usize,
@@ -34,15 +34,20 @@ fn labels_has_single_element(labels: &[String]) -> bool {
     labels.len() <= 1
 }
 
-#[derive(Debug, Serialize)]
+/// Helper function for serde to skip empty Vec
+fn vec_is_empty(v: &[String]) -> bool {
+    v.is_empty()
+}
+
+#[derive(Debug, Serialize, Clone)]
 pub struct Stub {
     pub label: String,
-    #[serde(rename = "stub-type")]
-    pub stub_type: String,
-    #[serde(rename = "stub-path")]
-    pub stub_path: String,
-    #[serde(rename = "stub-spec")]
-    pub stub_spec: LineRange,
+    #[serde(rename = "stub-type", skip_serializing_if = "Option::is_none")]
+    pub stub_type: Option<String>,
+    #[serde(rename = "stub-path", skip_serializing_if = "Option::is_none")]
+    pub stub_path: Option<String>,
+    #[serde(rename = "stub-spec", skip_serializing_if = "Option::is_none")]
+    pub stub_spec: Option<LineRange>,
     #[serde(rename = "stub-proof", skip_serializing_if = "Option::is_none")]
     pub stub_proof: Option<LineRange>,
     #[serde(skip_serializing_if = "labels_has_single_element")]
@@ -51,15 +56,15 @@ pub struct Stub {
     pub code_name: Option<String>,
     #[serde(rename = "code-names", skip_serializing_if = "Option::is_none")]
     pub lean_names: Option<Vec<String>>,
-    #[serde(rename = "spec-ok")]
-    pub spec_ok: bool,
-    #[serde(rename = "mathlib-ok")]
-    pub mathlib_ok: bool,
-    #[serde(rename = "not-ready")]
-    pub not_ready: bool,
+    #[serde(rename = "spec-ok", skip_serializing_if = "Option::is_none")]
+    pub spec_ok: Option<bool>,
+    #[serde(rename = "mathlib-ok", skip_serializing_if = "Option::is_none")]
+    pub mathlib_ok: Option<bool>,
+    #[serde(rename = "not-ready", skip_serializing_if = "Option::is_none")]
+    pub not_ready: Option<bool>,
     #[serde(rename = "discussion", skip_serializing_if = "Vec::is_empty")]
     pub discussion: Vec<String>,
-    #[serde(rename = "spec-dependencies")]
+    #[serde(rename = "spec-dependencies", skip_serializing_if = "vec_is_empty")]
     pub spec_dependencies: Vec<String>,
     #[serde(rename = "proof-ok", skip_serializing_if = "Option::is_none")]
     pub proof_ok: Option<bool>,
@@ -695,16 +700,16 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
             stub_name,
             Stub {
                 label: primary_label.clone(),
-                stub_type: env.env_type,
-                stub_path: env.relative_path,
-                stub_spec: env.spec_lines,
+                stub_type: Some(env.env_type),
+                stub_path: Some(env.relative_path),
+                stub_spec: Some(env.spec_lines),
                 stub_proof: env.proof_lines,
                 labels: env.labels,
                 code_name: env.code_name,
                 lean_names: env.lean_names,
-                spec_ok: env.spec_ok,
-                mathlib_ok: env.mathlib_ok,
-                not_ready: env.not_ready,
+                spec_ok: Some(env.spec_ok),
+                mathlib_ok: if env.mathlib_ok { Some(true) } else { None },
+                not_ready: if env.not_ready { Some(true) } else { None },
                 discussion: env.discussion,
                 spec_dependencies: env.spec_dependencies,
                 proof_ok: env.proof_ok,
@@ -733,7 +738,7 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
             if let Some(stub_name) = label_to_stub_name.get(proves_label) {
                 if let Some(stub) = all_stubs.get_mut(stub_name) {
                     // Merge proof fields into the stub
-                    stub.stub_proof = Some(proof.lines.clone());
+                    stub.stub_proof = Some(proof.lines);
                     if proof.proof_ok {
                         stub.proof_ok = Some(true);
                     }
@@ -797,6 +802,82 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
             }
             stub.proof_dependencies = Some(resolved_proof_deps);
         }
+    }
+
+    // Split stubs with multiple code-names into separate child stubs
+    // Each child stub gets one code-name, and the parent stub references the children
+    let stub_names_to_split: Vec<String> = all_stubs
+        .iter()
+        .filter(|(_, stub)| {
+            stub.lean_names
+                .as_ref()
+                .is_some_and(|names| names.len() > 1)
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+
+    for stub_name in stub_names_to_split {
+        let stub = all_stubs.get(&stub_name).unwrap().clone();
+        let code_names = stub.lean_names.as_ref().unwrap();
+        let base_label = &stub.label;
+
+        // Create child stubs, one for each code-name
+        let mut child_stub_names = Vec::new();
+        for (i, code_name) in code_names.iter().enumerate() {
+            let child_label = format!("{}_{}", base_label, i + 1);
+            // Child stub-name uses parent's stub-path
+            let child_stub_name = format!(
+                "{}/{}",
+                stub.stub_path.as_ref().unwrap_or(&String::new()),
+                child_label
+            );
+
+            let child_stub = Stub {
+                label: child_label.clone(),
+                stub_type: None,
+                stub_path: None,
+                stub_spec: None,
+                stub_proof: None,
+                labels: vec![child_label.clone()],
+                code_name: Some(code_name.clone()),
+                lean_names: None,
+                spec_ok: stub.spec_ok,
+                mathlib_ok: stub.mathlib_ok,
+                not_ready: stub.not_ready,
+                discussion: stub.discussion.clone(),
+                spec_dependencies: stub.spec_dependencies.clone(),
+                proof_ok: stub.proof_ok,
+                proof_mathlib_ok: stub.proof_mathlib_ok,
+                proof_not_ready: stub.proof_not_ready,
+                proof_discussion: stub.proof_discussion.clone(),
+                proof_dependencies: stub.proof_dependencies.clone(),
+                proof_lean_names: stub.proof_lean_names.clone(),
+            };
+
+            child_stub_names.push(child_stub_name.clone());
+
+            // Add child label to label_to_stub_name mapping
+            label_to_stub_name.insert(child_label, child_stub_name.clone());
+
+            all_stubs.insert(child_stub_name, child_stub);
+        }
+
+        // Update the parent stub: remove code-related and verification fields,
+        // set spec-dependencies to point to child stubs
+        let parent_stub = all_stubs.get_mut(&stub_name).unwrap();
+        parent_stub.code_name = None;
+        parent_stub.lean_names = None;
+        parent_stub.spec_ok = None;
+        parent_stub.mathlib_ok = None;
+        parent_stub.not_ready = None;
+        parent_stub.discussion = Vec::new();
+        parent_stub.spec_dependencies = child_stub_names;
+        parent_stub.proof_ok = None;
+        parent_stub.proof_mathlib_ok = None;
+        parent_stub.proof_not_ready = None;
+        parent_stub.proof_discussion = None;
+        parent_stub.proof_dependencies = None;
+        parent_stub.proof_lean_names = None;
     }
 
     // Write output (create parent directory if needed)
@@ -1591,5 +1672,173 @@ Line 3 content.
         assert_eq!(merged.home, Some("base_home".to_string())); // kept from base
         assert_eq!(merged.github, Some("other_github".to_string())); // overridden by other
         assert_eq!(merged.dochome, Some("other_dochome".to_string())); // added from other
+    }
+
+    #[test]
+    fn test_stub_splitting_multiple_code_names() {
+        // Test that stubs with multiple code-names get split into child stubs
+        let content = r#"
+\begin{theorem}\label{multi_thm}\lean{Thm1, Thm2, Thm3}\leanok
+  A theorem with multiple lean names.
+\end{theorem}
+"#;
+        let env_types: Vec<String> = vec!["theorem".to_string()];
+        let envs = parse_tex_file(content, "chapter/test.tex", &env_types);
+
+        assert_eq!(envs.len(), 1);
+        assert_eq!(
+            envs[0].lean_names,
+            Some(vec![
+                "probe:Thm1".to_string(),
+                "probe:Thm2".to_string(),
+                "probe:Thm3".to_string()
+            ])
+        );
+
+        // Build stubs from envs (simulating what run() does)
+        let mut all_stubs: HashMap<String, Stub> = HashMap::new();
+        let mut label_to_stub_name: HashMap<String, String> = HashMap::new();
+
+        for env in envs {
+            let label = env.labels.iter().next_back().unwrap().clone();
+            let stub_name = format!("{}/{}", env.relative_path, label);
+
+            label_to_stub_name.insert(label.clone(), stub_name.clone());
+            for lbl in &env.labels {
+                label_to_stub_name.insert(lbl.clone(), stub_name.clone());
+            }
+
+            all_stubs.insert(
+                stub_name,
+                Stub {
+                    label,
+                    stub_type: Some(env.env_type.clone()),
+                    stub_path: Some(env.relative_path.clone()),
+                    stub_spec: Some(env.spec_lines),
+                    stub_proof: None,
+                    labels: env.labels.clone(),
+                    code_name: env.code_name.clone(),
+                    lean_names: env.lean_names.clone(),
+                    spec_ok: Some(env.spec_ok),
+                    mathlib_ok: Some(env.mathlib_ok),
+                    not_ready: Some(env.not_ready),
+                    discussion: env.discussion.clone(),
+                    spec_dependencies: vec![],
+                    proof_ok: None,
+                    proof_mathlib_ok: None,
+                    proof_not_ready: None,
+                    proof_discussion: None,
+                    proof_dependencies: None,
+                    proof_lean_names: None,
+                },
+            );
+        }
+
+        // Simulate stub splitting
+        let stub_names_to_split: Vec<String> = all_stubs
+            .iter()
+            .filter(|(_, stub)| {
+                stub.lean_names
+                    .as_ref()
+                    .is_some_and(|names| names.len() > 1)
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+
+        for stub_name in stub_names_to_split {
+            let stub = all_stubs.get(&stub_name).unwrap().clone();
+            let code_names = stub.lean_names.as_ref().unwrap();
+            let base_label = &stub.label;
+
+            let mut child_stub_names = Vec::new();
+            for (i, code_name) in code_names.iter().enumerate() {
+                let child_label = format!("{}_{}", base_label, i + 1);
+                let child_stub_name = format!(
+                    "{}/{}",
+                    stub.stub_path.as_ref().unwrap_or(&String::new()),
+                    child_label
+                );
+
+                let child_stub = Stub {
+                    label: child_label.clone(),
+                    stub_type: None,
+                    stub_path: None,
+                    stub_spec: None,
+                    stub_proof: None,
+                    labels: vec![child_label.clone()],
+                    code_name: Some(code_name.clone()),
+                    lean_names: None,
+                    spec_ok: stub.spec_ok,
+                    mathlib_ok: stub.mathlib_ok,
+                    not_ready: stub.not_ready,
+                    discussion: stub.discussion.clone(),
+                    spec_dependencies: stub.spec_dependencies.clone(),
+                    proof_ok: stub.proof_ok,
+                    proof_mathlib_ok: stub.proof_mathlib_ok,
+                    proof_not_ready: stub.proof_not_ready,
+                    proof_discussion: stub.proof_discussion.clone(),
+                    proof_dependencies: stub.proof_dependencies.clone(),
+                    proof_lean_names: stub.proof_lean_names.clone(),
+                };
+
+                child_stub_names.push(child_stub_name.clone());
+                label_to_stub_name.insert(child_label, child_stub_name.clone());
+                all_stubs.insert(child_stub_name, child_stub);
+            }
+
+            let parent_stub = all_stubs.get_mut(&stub_name).unwrap();
+            parent_stub.code_name = None;
+            parent_stub.lean_names = None;
+            parent_stub.spec_ok = None;
+            parent_stub.mathlib_ok = None;
+            parent_stub.not_ready = None;
+            parent_stub.discussion = Vec::new();
+            parent_stub.spec_dependencies = child_stub_names;
+            parent_stub.proof_ok = None;
+            parent_stub.proof_mathlib_ok = None;
+            parent_stub.proof_not_ready = None;
+            parent_stub.proof_discussion = None;
+            parent_stub.proof_dependencies = None;
+            parent_stub.proof_lean_names = None;
+        }
+
+        // Verify: should have 4 stubs now (1 parent + 3 children)
+        assert_eq!(all_stubs.len(), 4);
+
+        // Check parent stub
+        let parent = all_stubs.get("chapter/test.tex/multi_thm").unwrap();
+        assert_eq!(parent.label, "multi_thm");
+        assert!(parent.stub_type.is_some()); // Parent keeps stub-type
+        assert!(parent.stub_path.is_some()); // Parent keeps stub-path
+        assert!(parent.stub_spec.is_some()); // Parent keeps stub-spec
+        assert!(parent.code_name.is_none()); // Parent loses code-name
+        assert!(parent.lean_names.is_none()); // Parent loses lean-names
+        assert!(parent.spec_ok.is_none()); // Parent loses spec-ok
+        assert_eq!(
+            parent.spec_dependencies,
+            vec![
+                "chapter/test.tex/multi_thm_1",
+                "chapter/test.tex/multi_thm_2",
+                "chapter/test.tex/multi_thm_3"
+            ]
+        );
+
+        // Check child stubs
+        let child1 = all_stubs.get("chapter/test.tex/multi_thm_1").unwrap();
+        assert_eq!(child1.label, "multi_thm_1");
+        assert!(child1.stub_type.is_none()); // Child has no stub-type
+        assert!(child1.stub_path.is_none()); // Child has no stub-path
+        assert!(child1.stub_spec.is_none()); // Child has no stub-spec
+        assert_eq!(child1.code_name, Some("probe:Thm1".to_string()));
+        assert!(child1.lean_names.is_none()); // Child has no lean-names
+        assert_eq!(child1.spec_ok, Some(true)); // Child inherits spec-ok
+
+        let child2 = all_stubs.get("chapter/test.tex/multi_thm_2").unwrap();
+        assert_eq!(child2.label, "multi_thm_2");
+        assert_eq!(child2.code_name, Some("probe:Thm2".to_string()));
+
+        let child3 = all_stubs.get("chapter/test.tex/multi_thm_3").unwrap();
+        assert_eq!(child3.label, "multi_thm_3");
+        assert_eq!(child3.code_name, Some("probe:Thm3".to_string()));
     }
 }
