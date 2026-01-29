@@ -45,7 +45,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 2. Scans all `.tex` files in `blueprint/src/` for those environments
 3. For each environment, extracts:
    - All `\label{...}` → `labels` list (uses the last one for stub-name)
-   - `\lean{a,b,c}` → `code-name` (first), `lean-names` (full list if multiple)
+   - `\lean{a,b,c}` → `code-name` (first), `code-names` (full list if multiple)
    - `\leanok` → `spec-ok: true`
    - `\mathlibok` → `mathlib-ok: true`
    - `\notready` → `not-ready: true`
@@ -58,11 +58,11 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
    - `\notready` → `proof-not-ready: true`
    - `\discussion{...}` → `proof-discussion`
    - `\uses{...}` → `proof-dependencies`
-   - `\lean{...}` → `proof-lean-names`
+   - `\lean{...}` → `proof-code-names`
 5. If a proof contains `\proves{label}`, it is merged into the corresponding stub (for proofs not immediately following their statement)
 6. If an environment has no label, generates one in the form `a0000000000`
 7. Errors if duplicate labels are found
-8. Validates all labels in `spec-dependencies` and `proof-dependencies` exist, then expands them to full stub-names
+8. Validates all labels in `spec-dependencies` and `proof-dependencies` exist, resolving them to canonical stub-names (labels may be non-canonical; they are resolved using the labels field of each stub)
 9. Extracts project config macros (`\home`, `\github`, `\dochome`) and writes them to `.verilib/config.json`
 
 **Output format:**
@@ -70,13 +70,14 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 ```json
 {
   "chapter/implications.tex/thm_proof_label": {
+    "label": "thm_proof_label",
     "stub-type": "theorem",
     "stub-path": "chapter/implications.tex",
     "stub-spec": { "lines-start": 10, "lines-end": 15 },
     "stub-proof": { "lines-start": 17, "lines-end": 22 },
     "labels": ["thm_label", "thm_proof_label"],
     "code-name": "probe:Subgraph.Equation387_implies_Equation43",
-    "lean-names": ["Subgraph.Equation387_implies_Equation43", "Subgraph.Equation387_implies_Equation43'"],
+    "code-names": ["probe:Subgraph.Equation387_implies_Equation43", "probe:Subgraph.Equation387_implies_Equation43'"],
     "spec-ok": true,
     "mathlib-ok": false,
     "not-ready": false,
@@ -85,9 +86,10 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
     "proof-ok": true,
     "proof-mathlib-ok": true,
     "proof-dependencies": ["chapter/lemmas.tex/lemma1", "chapter/lemmas.tex/lemma2"],
-    "proof-lean-names": ["ProofDecl"]
+    "proof-code-names": ["ProofDecl"]
   },
   "chapter/equations.tex/eq1": {
+    "label": "eq1",
     "stub-type": "definition",
     "stub-path": "chapter/equations.tex",
     "stub-spec": { "lines-start": 5, "lines-end": 8 },
@@ -105,12 +107,13 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 
 *Statement fields:*
 - **Key (stub-name)**: Relative path from `blueprint/src` + `/` + last label
+- **`label`**: The canonical label for the stub (the last label, also the part after `/` in the key)
 - **`stub-type`**: The LaTeX environment type (e.g., "theorem", "lemma", "definition", "dfn")
 - **`stub-path`**: Relative path of the .tex file from `blueprint/src`
 - **`stub-spec`**: Line range of the statement environment (`lines-start` and `lines-end`)
 - **`labels`**: All labels found in the environment and its proof (in order of appearance)
 - **`code-name`**: First Lean declaration name from `\lean{...}` with "probe:" prefix (null if not specified)
-- **`lean-names`**: Full list of Lean declarations if multiple specified (omitted if single or none)
+- **`code-names`**: Full list of Lean declarations with "probe:" prefix if multiple specified (omitted if single or none)
 - **`spec-ok`**: `true` if `\leanok` is present in the statement
 - **`mathlib-ok`**: `true` if `\mathlibok` is present in the statement
 - **`not-ready`**: `true` if `\notready` is present in the statement
@@ -124,7 +127,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 - **`proof-not-ready`**: `true` if `\notready` is present in the proof
 - **`proof-discussion`**: List of issue numbers from `\discussion{...}` in the proof
 - **`proof-dependencies`**: List of stub-names from `\uses{...}` in the proof (labels are expanded to full stub-names)
-- **`proof-lean-names`**: List of Lean declarations from `\lean{...}` in the proof
+- **`proof-code-names`**: List of Lean declarations from `\lean{...}` in the proof
 
 **Config output (`.verilib/config.json`):**
 

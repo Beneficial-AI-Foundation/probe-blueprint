@@ -31,6 +31,7 @@ pub struct LineRange {
 
 #[derive(Debug, Serialize)]
 pub struct Stub {
+    pub label: String,
     #[serde(rename = "stub-type")]
     pub stub_type: String,
     #[serde(rename = "stub-path")]
@@ -42,7 +43,7 @@ pub struct Stub {
     pub labels: Vec<String>,
     #[serde(rename = "code-name", skip_serializing_if = "Option::is_none")]
     pub code_name: Option<String>,
-    #[serde(rename = "lean-names", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "code-names", skip_serializing_if = "Option::is_none")]
     pub lean_names: Option<Vec<String>>,
     #[serde(rename = "spec-ok")]
     pub spec_ok: bool,
@@ -447,13 +448,18 @@ fn parse_tex_file(content: &str, relative_path: &str, env_types: &[String]) -> V
         // Extract all \label{...} in order from the statement
         let mut labels = extract_all_labels(env_content);
 
-        // Extract \lean{...} - returns list of declarations
+        // Extract \lean{...} - returns list of declarations with "probe:" prefix
         let lean_names_list = extract_lean(env_content);
         let code_name = lean_names_list
             .first()
             .map(|name| format!("probe:{}", name));
         let lean_names = if lean_names_list.len() > 1 {
-            Some(lean_names_list)
+            Some(
+                lean_names_list
+                    .iter()
+                    .map(|name| format!("probe:{}", name))
+                    .collect(),
+            )
         } else {
             None
         };
@@ -682,6 +688,7 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
         all_stubs.insert(
             stub_name,
             Stub {
+                label: primary_label.clone(),
                 stub_type: env.env_type,
                 stub_path: env.relative_path,
                 stub_spec: env.spec_lines,
@@ -749,13 +756,15 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // Validate and expand dependencies to full stub-names
+    // Resolve dependency labels to canonical stub-names
+    // Dependencies in .tex files are labels (possibly non-canonical), which we
+    // resolve to stub-names using the label_to_stub_name mapping
     for (stub_name, stub) in all_stubs.iter_mut() {
-        // Validate and expand spec-dependencies
-        let mut expanded_spec_deps = Vec::new();
+        // Resolve spec-dependencies labels to stub-names
+        let mut resolved_spec_deps = Vec::new();
         for dep_label in &stub.spec_dependencies {
             if let Some(dep_stub_name) = label_to_stub_name.get(dep_label) {
-                expanded_spec_deps.push(dep_stub_name.clone());
+                resolved_spec_deps.push(dep_stub_name.clone());
             } else {
                 return Err(format!(
                     "Unknown label '{}' in spec-dependencies of stub '{}'",
@@ -764,14 +773,14 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
                 .into());
             }
         }
-        stub.spec_dependencies = expanded_spec_deps;
+        stub.spec_dependencies = resolved_spec_deps;
 
-        // Validate and expand proof-dependencies
+        // Resolve proof-dependencies labels to stub-names
         if let Some(proof_deps) = &stub.proof_dependencies {
-            let mut expanded_proof_deps = Vec::new();
+            let mut resolved_proof_deps = Vec::new();
             for dep_label in proof_deps {
                 if let Some(dep_stub_name) = label_to_stub_name.get(dep_label) {
-                    expanded_proof_deps.push(dep_stub_name.clone());
+                    resolved_proof_deps.push(dep_stub_name.clone());
                 } else {
                     return Err(format!(
                         "Unknown label '{}' in proof-dependencies of stub '{}'",
@@ -780,7 +789,7 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
                     .into());
                 }
             }
-            stub.proof_dependencies = Some(expanded_proof_deps);
+            stub.proof_dependencies = Some(resolved_proof_deps);
         }
     }
 
@@ -1389,9 +1398,9 @@ Line 3 content.
         assert_eq!(
             envs[0].lean_names,
             Some(vec![
-                "Thm1".to_string(),
-                "Thm2".to_string(),
-                "Thm3".to_string()
+                "probe:Thm1".to_string(),
+                "probe:Thm2".to_string(),
+                "probe:Thm3".to_string()
             ])
         );
     }
