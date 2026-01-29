@@ -29,6 +29,11 @@ pub struct LineRange {
     pub lines_end: usize,
 }
 
+/// Helper function for serde to skip labels if it only contains one element
+fn labels_has_single_element(labels: &[String]) -> bool {
+    labels.len() <= 1
+}
+
 #[derive(Debug, Serialize)]
 pub struct Stub {
     pub label: String,
@@ -40,6 +45,7 @@ pub struct Stub {
     pub stub_spec: LineRange,
     #[serde(rename = "stub-proof", skip_serializing_if = "Option::is_none")]
     pub stub_proof: Option<LineRange>,
+    #[serde(skip_serializing_if = "labels_has_single_element")]
     pub labels: Vec<String>,
     #[serde(rename = "code-name", skip_serializing_if = "Option::is_none")]
     pub code_name: Option<String>,

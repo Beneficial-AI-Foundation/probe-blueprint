@@ -93,7 +93,6 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
     "stub-type": "definition",
     "stub-path": "chapter/equations.tex",
     "stub-spec": { "lines-start": 5, "lines-end": 8 },
-    "labels": ["eq1"],
     "code-name": "probe:Equation1",
     "spec-ok": true,
     "mathlib-ok": true,
@@ -111,7 +110,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 - **`stub-type`**: The LaTeX environment type (e.g., "theorem", "lemma", "definition", "dfn")
 - **`stub-path`**: Relative path of the .tex file from `blueprint/src`
 - **`stub-spec`**: Line range of the statement environment (`lines-start` and `lines-end`)
-- **`labels`**: All labels found in the environment and its proof (in order of appearance)
+- **`labels`**: All labels found in the environment and its proof (omitted if only one label exists)
 - **`code-name`**: First Lean declaration name from `\lean{...}` with "probe:" prefix (null if not specified)
 - **`code-names`**: Full list of Lean declarations with "probe:" prefix if multiple specified (omitted if single or none)
 - **`spec-ok`**: `true` if `\leanok` is present in the statement
