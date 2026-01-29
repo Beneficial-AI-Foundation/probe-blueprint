@@ -62,7 +62,8 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 5. If a proof contains `\proves{label}`, it is merged into the corresponding stub (for proofs not immediately following their statement)
 6. If an environment has no label, generates one in the form `a0000000000`
 7. Errors if duplicate labels are found
-8. Extracts project config macros (`\home`, `\github`, `\dochome`) and writes them to `.verilib/config.json`
+8. Validates all labels in `spec-dependencies` and `proof-dependencies` exist, then expands them to full stub-names
+9. Extracts project config macros (`\home`, `\github`, `\dochome`) and writes them to `.verilib/config.json`
 
 **Output format:**
 
@@ -80,10 +81,10 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
     "mathlib-ok": false,
     "not-ready": false,
     "discussion": ["123"],
-    "spec-dependencies": ["eq387", "eq43"],
+    "spec-dependencies": ["chapter/equations.tex/eq387", "chapter/equations.tex/eq43"],
     "proof-ok": true,
     "proof-mathlib-ok": true,
-    "proof-dependencies": ["lemma1", "lemma2"],
+    "proof-dependencies": ["chapter/lemmas.tex/lemma1", "chapter/lemmas.tex/lemma2"],
     "proof-lean-names": ["ProofDecl"]
   },
   "chapter/equations.tex/eq1": {
@@ -95,7 +96,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
     "spec-ok": true,
     "mathlib-ok": true,
     "not-ready": false,
-    "spec-dependencies": ["magma-def"]
+    "spec-dependencies": ["chapter/definitions.tex/magma-def"]
   }
 }
 ```
@@ -114,7 +115,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 - **`mathlib-ok`**: `true` if `\mathlibok` is present in the statement
 - **`not-ready`**: `true` if `\notready` is present in the statement
 - **`discussion`**: List of GitHub issue numbers from `\discussion{...}` (omitted if empty)
-- **`spec-dependencies`**: List of labels from `\uses{...}` in the statement
+- **`spec-dependencies`**: List of stub-names from `\uses{...}` in the statement (labels are expanded to full stub-names)
 
 *Proof fields (omitted if no proof):*
 - **`stub-proof`**: Line range of the proof environment
@@ -122,7 +123,7 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 - **`proof-mathlib-ok`**: `true` if `\mathlibok` is present in the proof
 - **`proof-not-ready`**: `true` if `\notready` is present in the proof
 - **`proof-discussion`**: List of issue numbers from `\discussion{...}` in the proof
-- **`proof-dependencies`**: List of labels from `\uses{...}` in the proof
+- **`proof-dependencies`**: List of stub-names from `\uses{...}` in the proof (labels are expanded to full stub-names)
 - **`proof-lean-names`**: List of Lean declarations from `\lean{...}` in the proof
 
 **Config output (`.verilib/config.json`):**

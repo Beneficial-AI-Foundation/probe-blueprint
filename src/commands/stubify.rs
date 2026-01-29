@@ -747,6 +747,41 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
         }
     }
 
+    // Validate and expand dependencies to full stub-names
+    for (stub_name, stub) in all_stubs.iter_mut() {
+        // Validate and expand spec-dependencies
+        let mut expanded_spec_deps = Vec::new();
+        for dep_label in &stub.spec_dependencies {
+            if let Some(dep_stub_name) = label_to_stub_name.get(dep_label) {
+                expanded_spec_deps.push(dep_stub_name.clone());
+            } else {
+                return Err(format!(
+                    "Unknown label '{}' in spec-dependencies of stub '{}'",
+                    dep_label, stub_name
+                )
+                .into());
+            }
+        }
+        stub.spec_dependencies = expanded_spec_deps;
+
+        // Validate and expand proof-dependencies
+        if let Some(proof_deps) = &stub.proof_dependencies {
+            let mut expanded_proof_deps = Vec::new();
+            for dep_label in proof_deps {
+                if let Some(dep_stub_name) = label_to_stub_name.get(dep_label) {
+                    expanded_proof_deps.push(dep_stub_name.clone());
+                } else {
+                    return Err(format!(
+                        "Unknown label '{}' in proof-dependencies of stub '{}'",
+                        dep_label, stub_name
+                    )
+                    .into());
+                }
+            }
+            stub.proof_dependencies = Some(expanded_proof_deps);
+        }
+    }
+
     // Write output (create parent directory if needed)
     let output_path = Path::new(output);
     if let Some(parent) = output_path.parent() {
