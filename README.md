@@ -60,6 +60,9 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 ```json
 {
   "chapter/implications.tex/thm_proof_label": {
+    "stub-path": "chapter/implications.tex",
+    "stub-spec": { "lines-start": 10, "lines-end": 15 },
+    "stub-proof": { "lines-start": 17, "lines-end": 22 },
     "labels": ["thm_label", "thm_proof_label"],
     "code-name": "Subgraph.Equation387_implies_Equation43",
     "spec-ok": true,
@@ -68,6 +71,8 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
     "proof-dependencies": ["lemma1", "lemma2"]
   },
   "chapter/equations.tex/eq1": {
+    "stub-path": "chapter/equations.tex",
+    "stub-spec": { "lines-start": 5, "lines-end": 8 },
     "labels": ["eq1"],
     "code-name": "Equation1",
     "spec-ok": true,
@@ -78,6 +83,9 @@ probe-blueprint stubify ./my-lean-project -o stubs.json
 
 **Field descriptions:**
 - **Key (stub-name)**: Relative path from `blueprint/src` + `/` + last label
+- **`stub-path`**: Relative path of the .tex file from `blueprint/src`
+- **`stub-spec`**: Line range of the statement environment (`lines-start` and `lines-end`)
+- **`stub-proof`**: Line range of the proof environment (omitted if no proof)
 - **`labels`**: All labels found in the environment and its proof (in order of appearance)
 - **`code-name`**: Lean declaration name from `\lean{...}` (null if not specified)
 - **`spec-ok`**: `true` if `\leanok` is present in the statement, `false` otherwise

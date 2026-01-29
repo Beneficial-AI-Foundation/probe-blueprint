@@ -9,8 +9,23 @@ use walkdir::WalkDir;
 /// Default LaTeX environments to look for (from leanblueprint defaults)
 const DEFAULT_ENVS: &[&str] = &["definition", "lemma", "proposition", "theorem", "corollary"];
 
+/// Line range for source locations
+#[derive(Debug, Serialize, Clone)]
+pub struct LineRange {
+    #[serde(rename = "lines-start")]
+    pub lines_start: usize,
+    #[serde(rename = "lines-end")]
+    pub lines_end: usize,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Stub {
+    #[serde(rename = "stub-path")]
+    pub stub_path: String,
+    #[serde(rename = "stub-spec")]
+    pub stub_spec: LineRange,
+    #[serde(rename = "stub-proof", skip_serializing_if = "Option::is_none")]
+    pub stub_proof: Option<LineRange>,
     pub labels: Vec<String>,
     #[serde(rename = "code-name", skip_serializing_if = "Option::is_none")]
     pub code_name: Option<String>,
@@ -44,7 +59,7 @@ fn parse_thms_option(web_tex_content: &str) -> Vec<String> {
     DEFAULT_ENVS.iter().map(|s| s.to_string()).collect()
 }
 
-/// Strip LaTeX comments from content
+/// Strip LaTeX comments from content, preserving line structure
 /// Comments start with % and go to end of line, but \% is an escaped percent sign
 fn strip_latex_comments(content: &str) -> String {
     let mut result = String::new();
@@ -58,7 +73,7 @@ fn strip_latex_comments(content: &str) -> String {
                 result.push(chars.next().unwrap());
             }
         } else if c == '%' {
-            // Comment - skip until end of line
+            // Comment - skip until end of line, but preserve the newline
             while let Some(&next) = chars.peek() {
                 if next == '\n' {
                     break;
@@ -151,9 +166,16 @@ fn generate_label(counter: u64) -> String {
     format!("a{:010}", counter)
 }
 
+/// Convert a byte position to a 1-indexed line number
+fn byte_pos_to_line(content: &str, pos: usize) -> usize {
+    content[..pos].chars().filter(|&c| c == '\n').count() + 1
+}
+
 /// Parsed environment before label validation
 struct ParsedEnv {
     relative_path: String,
+    spec_lines: LineRange,
+    proof_lines: Option<LineRange>,
     labels: Vec<String>,
     code_name: Option<String>,
     spec_ok: bool,
@@ -162,26 +184,47 @@ struct ParsedEnv {
     proof_dependencies: Option<Vec<String>>,
 }
 
+/// Proof match result with content and line range
+struct ProofMatch {
+    content: String,
+    lines: LineRange,
+}
+
 /// Find the proof environment that immediately follows a position in the content
-/// Returns the proof content if found
-fn find_following_proof(content: &str, after_pos: usize) -> Option<String> {
+/// Returns the proof content and line range if found
+fn find_following_proof(content: &str, after_pos: usize) -> Option<ProofMatch> {
     let remaining = &content[after_pos..];
 
     // Look for \begin{proof} that appears next (allowing only whitespace before it)
-    let proof_re = Regex::new(r"(?s)^\s*\\begin\{proof\}(.*?)\\end\{proof\}").unwrap();
+    let proof_re = Regex::new(r"(?s)^\s*(\\begin\{proof\})(.*?)\\end\{proof\}").unwrap();
 
-    proof_re.captures(remaining).map(|caps| caps[1].to_string())
+    proof_re.captures(remaining).map(|caps| {
+        // Get the position of \begin{proof} itself, not the leading whitespace
+        let begin_match = caps.get(1).unwrap();
+        let proof_start = after_pos + begin_match.start();
+        let full_match = caps.get(0).unwrap();
+        let proof_end = after_pos + full_match.end();
+
+        ProofMatch {
+            content: caps[2].to_string(), // Content is now in group 2
+            lines: LineRange {
+                lines_start: byte_pos_to_line(content, proof_start),
+                lines_end: byte_pos_to_line(content, proof_end - 1), // -1 to get line of last char
+            },
+        }
+    })
 }
 
 /// Parse a single .tex file and extract environments
 fn parse_tex_file(content: &str, relative_path: &str, env_types: &[String]) -> Vec<ParsedEnv> {
     let mut envs = Vec::new();
 
-    // Strip LaTeX comments before parsing
+    // Strip LaTeX comments before parsing (preserves line structure)
     let content = strip_latex_comments(content);
 
     // Collect all environment matches with their positions
     struct EnvMatch {
+        start_pos: usize,
         end_pos: usize,
         env_content: String,
     }
@@ -201,6 +244,7 @@ fn parse_tex_file(content: &str, relative_path: &str, env_types: &[String]) -> V
         for caps in env_re.captures_iter(&content) {
             let full_match = caps.get(0).unwrap();
             all_matches.push(EnvMatch {
+                start_pos: full_match.start(),
                 end_pos: full_match.end(),
                 env_content: caps[1].to_string(),
             });
@@ -208,10 +252,16 @@ fn parse_tex_file(content: &str, relative_path: &str, env_types: &[String]) -> V
     }
 
     // Sort by position to process in order
-    all_matches.sort_by_key(|m| m.end_pos);
+    all_matches.sort_by_key(|m| m.start_pos);
 
     for env_match in all_matches {
         let env_content = &env_match.env_content;
+
+        // Calculate line numbers for the spec environment
+        let spec_lines = LineRange {
+            lines_start: byte_pos_to_line(&content, env_match.start_pos),
+            lines_end: byte_pos_to_line(&content, env_match.end_pos - 1),
+        };
 
         // Extract all \label{...} in order from the statement
         let mut labels = extract_all_labels(env_content);
@@ -226,34 +276,36 @@ fn parse_tex_file(content: &str, relative_path: &str, env_types: &[String]) -> V
         let spec_dependencies = extract_uses(env_content);
 
         // Look for a following proof environment
-        let (proof_ok, proof_dependencies) =
-            if let Some(proof_content) = find_following_proof(&content, env_match.end_pos) {
+        let (proof_lines, proof_ok, proof_dependencies) =
+            if let Some(proof_match) = find_following_proof(&content, env_match.end_pos) {
                 // Add proof labels to the labels list
-                let proof_labels = extract_all_labels(&proof_content);
+                let proof_labels = extract_all_labels(&proof_match.content);
                 labels.extend(proof_labels);
 
                 // Check for \leanok in proof
-                let p_ok = if proof_content.contains(r"\leanok") {
+                let p_ok = if proof_match.content.contains(r"\leanok") {
                     Some(true)
                 } else {
                     None
                 };
 
                 // Extract \uses{...} from proof
-                let p_deps = extract_uses(&proof_content);
+                let p_deps = extract_uses(&proof_match.content);
                 let p_deps = if p_deps.is_empty() {
                     None
                 } else {
                     Some(p_deps)
                 };
 
-                (p_ok, p_deps)
+                (Some(proof_match.lines), p_ok, p_deps)
             } else {
-                (None, None)
+                (None, None, None)
             };
 
         envs.push(ParsedEnv {
             relative_path: relative_path.to_string(),
+            spec_lines,
+            proof_lines,
             labels,
             code_name,
             spec_ok,
@@ -357,6 +409,9 @@ pub fn run(project_path: &str, output: &str) -> Result<(), Box<dyn Error>> {
         all_stubs.insert(
             stub_name,
             Stub {
+                stub_path: env.relative_path,
+                stub_spec: env.spec_lines,
+                stub_proof: env.proof_lines,
                 labels: env.labels,
                 code_name: env.code_name,
                 spec_ok: env.spec_ok,
@@ -452,6 +507,15 @@ mod tests {
     }
 
     #[test]
+    fn test_byte_pos_to_line() {
+        let content = "line1\nline2\nline3";
+        assert_eq!(byte_pos_to_line(content, 0), 1); // Start of line1
+        assert_eq!(byte_pos_to_line(content, 5), 1); // End of line1 (before \n)
+        assert_eq!(byte_pos_to_line(content, 6), 2); // Start of line2
+        assert_eq!(byte_pos_to_line(content, 12), 3); // Start of line3
+    }
+
+    #[test]
     fn test_parse_tex_file_theorem_with_labels() {
         let content = r#"
 \begin{theorem}[387 implies 43]\label{387_implies_43}\uses{eq387,eq43}\lean{Subgraph.Equation387_implies_Equation43}\leanok
@@ -471,6 +535,9 @@ mod tests {
         assert_eq!(envs[0].spec_dependencies, vec!["eq387", "eq43"]);
         assert_eq!(envs[0].proof_ok, None);
         assert_eq!(envs[0].proof_dependencies, None);
+        // Line numbers: starts on line 2, ends on line 4
+        assert_eq!(envs[0].spec_lines.lines_start, 2);
+        assert_eq!(envs[0].spec_lines.lines_end, 4);
     }
 
     #[test]
@@ -609,6 +676,11 @@ mod tests {
             envs[0].proof_dependencies,
             Some(vec!["lemma1".to_string(), "lemma2".to_string()])
         );
+        // Check proof lines are captured
+        assert!(envs[0].proof_lines.is_some());
+        let proof_lines = envs[0].proof_lines.as_ref().unwrap();
+        assert_eq!(proof_lines.lines_start, 6);
+        assert_eq!(proof_lines.lines_end, 8);
     }
 
     #[test]
@@ -666,6 +738,7 @@ mod tests {
         assert_eq!(envs[0].labels, vec!["my_def"]);
         assert_eq!(envs[0].proof_ok, None);
         assert_eq!(envs[0].proof_dependencies, None);
+        assert!(envs[0].proof_lines.is_none());
     }
 
     #[test]
@@ -688,6 +761,7 @@ Some intervening text here.
         assert_eq!(envs.len(), 1);
         // The proof should not be associated because there's intervening text
         assert_eq!(envs[0].proof_ok, None);
+        assert!(envs[0].proof_lines.is_none());
     }
 
     #[test]
@@ -763,5 +837,20 @@ More text.
         assert_eq!(envs.len(), 1);
         // Only main_thm should be captured, not internal_eq
         assert_eq!(envs[0].labels, vec!["main_thm"]);
+    }
+
+    #[test]
+    fn test_parse_tex_file_line_numbers() {
+        let content = r#"\begin{theorem}\label{thm1}
+Line 2 content.
+Line 3 content.
+\end{theorem}
+"#;
+        let env_types: Vec<String> = vec!["theorem".to_string()];
+        let envs = parse_tex_file(content, "file.tex", &env_types);
+
+        assert_eq!(envs.len(), 1);
+        assert_eq!(envs[0].spec_lines.lines_start, 1);
+        assert_eq!(envs[0].spec_lines.lines_end, 4);
     }
 }
